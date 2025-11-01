@@ -1553,7 +1553,7 @@
 	const TABLES = ['students', 'results', 'attendance', 'holidays', 'classes', 'feedback_data', 'user_roles', 'teachers', 'teaching_logs', 'teacher_feedback'];
 	const USER_DATA_TABLES = ['students', 'results', 'attendance', 'holidays', 'classes', 'feedback_data', 'teachers', 'teaching_logs', 'teacher_feedback'];
 
-	const PERMANENT_ADMIN_EMAIL = 'daxingfahad8@gmail.com';
+	const PERMANENT_ADMIN_EMAIL = 'emanasif55@gmail.com';
 
 
     let currentFeedbackId = null; // State for the admin modal
@@ -1889,8 +1889,6 @@
 		}
 	}
 
-    // --- UNIFIED NAVIGATION ---
-    // RECOMMENDED: This version fixes the local file login issue while keeping security for logged-in users.
 	const applyRoleBasedUI = () => {
 		// If no one is logged in (e.g., on the login page or when connection fails locally)
 		if (!currentUser) {
@@ -1921,6 +1919,8 @@
 		allInputs.forEach(el => el.disabled = true);
 		addSaveButtons.forEach(btn => { btn.disabled = true; btn.style.opacity = '0.6'; btn.style.cursor = 'not-allowed'; });
 		deleteButtons.forEach(btn => { btn.disabled = true; btn.style.opacity = '0.6'; btn.style.cursor = 'not-allowed'; });
+		
+		// CRITICAL: Hide the button by default for all logged-in users.
 		if (orgMgmtBtn) orgMgmtBtn.classList.add('hidden');
 
 		// --- Apply Permissions Based on Role ---
@@ -1936,6 +1936,8 @@
 			allInputs.forEach(el => el.disabled = false);
 			addSaveButtons.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; });
 			deleteButtons.forEach(btn => { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; });
+			
+			// CRITICAL FIX: Only show the button for admins
 			if (orgMgmtBtn) orgMgmtBtn.classList.remove('hidden');
 		}
 	};
@@ -5537,95 +5539,97 @@ window.addAttendanceToPreview = async () => {
     /* NEW: ORGANIZATION MANAGEMENT LOGIC                                     */
     /**************************************************************************/
 
-    /**
-     * Initializes the Organization Management page.
-     * Checks if the user is the permanent admin. If not, shows an access restricted message.
-     * If admin, fetches all user roles from the database.
-     */
-    const orgMgmt_initializePage = async () => {
-        const contentDiv = document.getElementById('org-management-content');
-        const restrictedDiv = document.getElementById('org-management-restricted');
+	/**
+	 * Initializes the Organization Management page.
+	 * Checks if the user is an admin. If not, shows an access restricted message.
+	 * If admin, fetches all user roles from the database.
+	 */
+	const orgMgmt_initializePage = async () => {
+		const contentDiv = document.getElementById('org-management-content');
+		const restrictedDiv = document.getElementById('org-management-restricted');
 
-        if (!currentUser || currentUser.email !== PERMANENT_ADMIN_EMAIL) {
-            contentDiv.classList.add('hidden');
-            restrictedDiv.classList.remove('hidden');
-            return;
-        }
+		// 🛑 CRITICAL FIX: Check if the user's assigned role is 'admin' (covers permanent and delegated admins)
+		if (!currentUser || currentUserRole !== 'admin') {
+			contentDiv.classList.add('hidden');
+			restrictedDiv.classList.remove('hidden');
+			return;
+		}
 
-        contentDiv.classList.remove('hidden');
-        restrictedDiv.classList.add('hidden');
+		contentDiv.classList.remove('hidden');
+		restrictedDiv.classList.add('hidden');
 
-        showToast("Fetching user data...", 'info');
-        const { data, error } = await supabase.from('user_roles').select('*').order('created_at', { ascending: false });
+		showToast("Fetching user data...", 'info');
+		const { data, error } = await supabase.from('user_roles').select('*').order('created_at', { ascending: false });
 
-        if (error) {
-            console.error('Error fetching users:', error);
-            showToast("Could not fetch user list.", "error");
-            return;
-        }
+		if (error) {
+			console.error('Error fetching users:', error);
+			showToast("Could not fetch user list.", "error");
+			return;
+		}
 
-        allUsersCache = data;
-        orgMgmt_renderTable(allUsersCache);
-    };
+		allUsersCache = data;
+		orgMgmt_renderTable(allUsersCache);
+	};
 
-    /**
-     * Renders the user roles table.
-     * @param {Array} users - An array of user objects from the `user_roles` table.
-     */
-    const orgMgmt_renderTable = (users) => {
-        const tableBody = document.getElementById('org-management-table-body');
-        if (!users || users.length === 0) { // Added check for undefined users
-             tableBody.innerHTML = `<tr><td colspan="5" class="text-center p-4">No users found.</td></tr>`;
-             return;
-        }
+	/**
+	 * Renders the user roles table.
+	 * @param {Array} users - An array of user objects from the `user_roles` table.
+	 */
+	const orgMgmt_renderTable = (users) => {
+		const tableBody = document.getElementById('org-management-table-body');
+		if (!users || users.length === 0) {
+			  tableBody.innerHTML = `<tr><td colspan="5" class="text-center p-4">No users found.</td></tr>`;
+			  return;
+		}
 
 
-        tableBody.innerHTML = users.map((user, index) => {
-            const isPermanentAdmin = user.email === PERMANENT_ADMIN_EMAIL;
-            const joinedDate = new Date(user.created_at).toLocaleDateString('en-GB');
+		tableBody.innerHTML = users.map((user, index) => {
+			// 🛑 CRITICAL FIX: Check if the current user in the table is the Permanent Admin
+			const isPermanentAdmin = user.email === PERMANENT_ADMIN_EMAIL;
+			const joinedDate = new Date(user.created_at).toLocaleDateString('en-GB');
 
-            const roleSelectHTML = `
-                <select
-                    class="role-select p-2 border rounded-md bg-white w-full"
-                    onchange="orgMgmt_updateUserRole('${user.user_id}', '${user.email}', this)"
-                    ${isPermanentAdmin ? 'disabled' : ''}>
-                    <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
-                    <option value="editor" ${user.role === 'editor' ? 'selected' : ''}>Editor</option>
-                    <option value="viewer" ${user.role === 'viewer' ? 'selected' : ''}>Viewer</option>
-                </select>
-            `;
+			const roleSelectHTML = `
+				<select
+					class="role-select p-2 border rounded-md bg-white w-full"
+					onchange="orgMgmt_updateUserRole('${user.user_id}', '${user.email}', this)"
+					${isPermanentAdmin ? 'disabled' : ''}> 
+					<option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
+					<option value="editor" ${user.role === 'editor' ? 'selected' : ''}>Editor</option>
+					<option value="viewer" ${user.role === 'viewer' ? 'selected' : ''}>Viewer</option>
+				</select>
+			`;
 
-            return `
-                <tr class="border-b hover:bg-gray-50">
-                    <td class="px-4 py-3">${index + 1}</td>
-                    <td class="px-4 py-3 font-medium">${user.email}</td>
-                    <td class="px-4 py-3">
-                        <span class="role-tag role-tag-${user.role}">${user.role.charAt(0).toUpperCase() + user.role.slice(1)}</span>
-                    </td>
-                    <td class="px-4 py-3">${joinedDate}</td>
-                    <td class="px-4 py-3 text-center">
-                        <div class="flex justify-center gap-2">
-                            ${roleSelectHTML}
-                            <button
-                                class="btn btn-danger !p-2"
-                                title="Delete User"
-                                onclick="orgMgmt_deleteUser('${user.user_id}', '${user.email}')"
-                                ${isPermanentAdmin ? 'disabled' : ''}>
-                                🗑️
-                            </button>
-                            <button
-                                class="btn btn-secondary !p-2"
-                                title="Reset Password"
-                                onclick="orgMgmt_resetUserPassword('${user.email}')"
-                                ${isPermanentAdmin ? 'disabled' : ''}>
-                                🔄
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-    };
+			return `
+				<tr class="border-b hover:bg-gray-50">
+					<td class="px-4 py-3">${index + 1}</td>
+					<td class="px-4 py-3 font-medium">${user.email}</td>
+					<td class="px-4 py-3">
+						<span class="role-tag role-tag-${user.role}">${user.role.charAt(0).toUpperCase() + user.role.slice(1)}</span>
+					</td>
+					<td class="px-4 py-3">${joinedDate}</td>
+					<td class="px-4 py-3 text-center">
+						<div class="flex justify-center gap-2">
+							${roleSelectHTML}
+							<button
+								class="btn btn-danger !p-2"
+								title="Delete User"
+								onclick="orgMgmt_deleteUser('${user.user_id}', '${user.email}')"
+								${isPermanentAdmin ? 'disabled' : ''}>  
+								🗑️
+							</button>
+							<button
+								class="btn btn-secondary !p-2"
+								title="Reset Password"
+								onclick="orgMgmt_resetUserPassword('${user.email}')"
+								${isPermanentAdmin ? 'disabled' : ''}> 
+								🔄
+							</button>
+						</div>
+					</td>
+				</tr>
+			`;
+		}).join('');
+	};
 
     /**
      * Filters the displayed users based on the search input.
@@ -5636,37 +5640,38 @@ window.addAttendanceToPreview = async () => {
         orgMgmt_renderTable(filteredUsers);
     };
 
-    /**
-     * Updates a user's role in the database.
-     * @param {string} userId - The UUID of the user to update.
-     * @param {string} userEmail - The email of the user (for checks).
-     * @param {HTMLElement} selectElement - The dropdown select element.
-     */
-    window.orgMgmt_updateUserRole = async (userId, userEmail, selectElement) => {
-        const newRole = selectElement.value;
-        if (userEmail === PERMANENT_ADMIN_EMAIL) {
-            showToast("Cannot change the permanent admin's role.", "error");
-            selectElement.value = 'admin'; // Revert change
-            return;
-        }
+/**
+	 * Updates a user's role in the database.
+	 * @param {string} userId - The UUID of the user to update.
+	 * @param {string} userEmail - The email of the user (for checks).
+	 * @param {HTMLElement} selectElement - The dropdown select element.
+	 */
+	window.orgMgmt_updateUserRole = async (userId, userEmail, selectElement) => {
+		const newRole = selectElement.value;
+		
+		if (userEmail === PERMANENT_ADMIN_EMAIL) {
+			showToast("Cannot change the role of the Permanent System Administrator.", "error");
+			selectElement.value = 'admin'; 
+			return; // Exit immediately
+		}
 
-        showToast(`Updating ${userEmail} to ${newRole}...`, 'info');
-        const { error } = await supabase
-            .from('user_roles')
-            .update({ role: newRole })
-            .eq('user_id', userId);
+		showToast(`Updating ${userEmail} to ${newRole}...`, 'info');
+		const { error } = await supabase
+			.from('user_roles')
+			.update({ role: newRole })
+			.eq('user_id', userId);
 
-        if (error) {
-            console.error("Role update error:", error);
-            showToast("Failed to update role.", "error");
-        } else {
-            showToast("User role updated successfully!", "success");
-            // Update cache and re-render to show new color tag
-            const userInCache = allUsersCache.find(u => u.user_id === userId);
-            if (userInCache) userInCache.role = newRole;
-            orgMgmt_filterUsers();
-        }
-    };
+		if (error) {
+			console.error("Role update error:", error);
+			showToast("Failed to update role.", "error");
+		} else {
+			showToast("User role updated successfully!", "success");
+			// Update cache and re-render to show new color tag
+			const userInCache = allUsersCache.find(u => u.user_id === userId);
+			if (userInCache) userInCache.role = newRole;
+			orgMgmt_filterUsers();
+		}
+	};
 
     /**
      * Deletes a user from the `auth.users` table via the `user_roles` table cascade.
@@ -6545,4 +6550,3 @@ window.addAttendanceToPreview = async () => {
 
 </body>
 </html>
-
